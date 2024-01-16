@@ -61,6 +61,8 @@ import xgboost as xgb
 from xgboost import XGBRegressor  as XGR
 from xgboost import XGBClassifier as XGC 
 
+#pip install --upgrade gensim
+from gensim.models import Word2Vec as word2vec 
 
 #############################################################################
 #############################################################################
@@ -430,8 +432,185 @@ RevDF['SALE'] = TF.astype(int)
 #----------------------------------------------------
 
 
+#############################################################################
+#############################################################################
 
 
+
+W2V = word2vec() 
+# Cosine Similarity of one Vector to a Matrix: 
+def cosine_sim_mat(vec_target,vec_matrix):
+    return W2V.wv.cosine_similarities(vec_target,vec_matrix) 
+  
+def cosine_sim_vec(x, y):
+    return np.dot(x, y) / (np.sqrt(np.dot(x, x)) * np.sqrt(np.dot(y, y)))
+
+def normalize(vec1):
+    m = vec1.mean()
+    vec2 = vec1-m
+    return vec2/(vec2.std()) 
+
+def getLinSim(vec_target,vec_matrix,exp=1.0):
+    return 1-(np.abs(M-np.array([t]))**exp).mean(1) 
+
+def CalcCorr(x,y):
+    return np.corrcoef(x,y)[0][1] 
+
+def compute_average_vectors(vector_matrix, class_ids):
+    # Step 1: Identify unique classes
+    unique_classes = np.unique(class_ids)
+    # Step 2 & 3: Group vectors by class and compute averages
+    averages = {class_id: vector_matrix[class_ids == class_id].mean(axis=0) for class_id in unique_classes}
+    return averages
+
+Usage = '''
+# Example usage
+data = np.array([[1, 2], [3, 4], [5, 6], [7, 8]])  # Replace with your data
+class_ids = np.array([1, 2, 1, 2])                 # Replace with your class IDs
+average_vectors = compute_average_vectors(data, class_ids)
+print(average_vectors) 
+'''
+
+#--------------------------------------------------------------------
+
+class SimpleVecModel:
+    
+    def __init__(self):
+        self.x = 1
+        
+    def fit(self,relations,add_prefix=True):
+        rels = np.array(relations).astype(str)
+        # Shuffles the training data. (Good practice for large data sets.) 
+        for _ in range(7): np.random.shuffle(rels) 
+        
+        self.ent2id = dict()
+        self.id2ent = dict()
+        
+        ents1 = np.array(sorted(set(rels[:,0]))) 
+        for ent in ents1:
+            if add_prefix: ent_id = 'ENT1_'+str(ent) 
+            else:          ent_id = str(ent)
+            self.ent2id[ent] = ent_id
+            self.id2ent[ent_id] = ent
+        ids1 = np.array([self.ent2id[ent] for ent in ents1])
+        
+        ents2 = np.array(sorted(set(rels[:,1]))) 
+        for ent in ents2:
+            if add_prefix: ent_id = 'ENT2_'+str(ent) 
+            else:          ent_id = str(ent)
+            self.ent2id[ent] = ent_id
+            self.id2ent[ent_id] = ent
+        ids2 = np.array([self.ent2id[ent] for ent in ents2])
+        
+        rels2 = []
+        for r in rels:
+            ent1,ent2 = tuple(r) 
+            id1,id2 = self.ent2id[ent1],self.ent2id[ent2] 
+            rels2.append([id1,id2]) 
+        
+        self.w2v = word2vec(
+            rels2,
+            #size=10,
+            vector_size=10,
+            #iter=80,  # 40
+            epochs=80,  # 40
+            alpha=0.02,
+            min_count=3,  
+            negative=25,
+            batch_words=100000,
+            workers=9    
+        );
+        
+        self.id2vec = dict() 
+        for id1 in ids1:
+            try: vec = self.w2v.wv[id1]
+            except: continue
+            self.id2vec[id1] = vec
+        for id2 in ids2:
+            try: vec = self.w2v.wv[id2]
+            except: continue
+            self.id2vec[id2] = vec
+            
+        #----------------------------------------------------
+        
+        id1_vecs = []
+        id2_classes = [] 
+        for rel in rels2:
+            id1,id2 = tuple(rel) 
+            if id1 not in self.id2vec: continue
+            vec1 = self.id2vec[id1] 
+            id1_vecs.append(vec1)
+            id2_classes.append(id2) 
+        id1_vecs = np.array(id1_vecs) 
+        id2_classes = np.array(id2_classes) 
+        
+        id2_dict = compute_average_vectors(id1_vecs, id2_classes) 
+        found_ids2 = np.array(sorted(id2_dict)) 
+        for id2 in found_ids2:
+            self.id2vec[id2] =  np.array(id2_dict[id2]) 
+            
+        #----------------------------------------------------
+            
+        self.all_found_ids  = np.array(sorted(self.id2vec)) 
+        self.all_found_ents = np.array([self.id2ent[fid] for fid in self.all_found_ids]) 
+        self.all_found_vecs = np.array([self.id2vec[fid] for fid in self.all_found_ids])
+        
+        M = np.array(self.all_found_vecs) 
+        
+        Notes = '''
+
+        Where M is a 2-D vector that represents a list of embeddings...
+        There are at least 8 variations for how to normalize vectors.
+        Please note that the order of these operations may matter.
+        They exist as some combination of the following 4 operations:
+
+        M = M - M.mean(0)    # Normalize the columns to Ave == 0.0
+        M = M / M.std(0)     # Normalize the columns to Std == 1.0
+        M = M - M.mean(1)    # Normalize the rows    to Ave == 0.0
+        M = M / M.std(1)     # Normalize the rows    to Std == 1.0
+
+        M = M / (np.abs(M).mean(1)).reshape(-1, 1)
+
+        These operations are (roughly) in order of priority.
+
+        '''
+        # Selected Normalization Operations:
+        M = M - M.mean(0)
+        M = M / M.std(0) 
+        
+        # Reset the underlying vector dictionary
+        for ent_id,vec in zip(self.all_found_ids,M):
+            self.id2vec[ent_id] = vec
+            
+        # Reset the record of the IDs, the Ents, and the Found Vecs matrix:
+        self.all_found_ids  = np.array(sorted(self.id2vec)) 
+        self.all_found_ents = np.array([self.id2ent[fid] for fid in self.all_found_ids]) 
+        self.all_found_vecs = np.array([self.id2vec[fid] for fid in self.all_found_ids])
+        
+        print('Done fitting embedding model.') 
+        
+    def ent2vec(self,ent):
+        try:
+            ent_id = self.ent2id[str(ent)]
+            vec = self.id2vec[ent_id] 
+            return vec #normalize(vec) 
+        except:
+            return np.array([]) 
+        
+    def similar(self,tgt_ent,other_ents=[],n_similar=25): 
+        if len(other_ents)>0:
+            self.found_ent_set = set(self.all_found_ents) 
+            found_ents = np.array([a for a in other_ents if ent in self.found_ent_set]) 
+            M = np.array(sorted([self.ent2vec(ent) for ent in found_ents]))  
+        else: 
+            M = self.all_found_vecs
+            found_ents = np.array(self.all_found_ents) 
+        tgt_vec = self.ent2vec(tgt_ent) 
+        sims = cosine_sim_mat(tgt_vec,M) 
+        order = np.argsort(sims)[::-1] 
+        top_results = found_ents[order][:n_similar+2]  
+        return [a for a in top_results if a!=tgt_ent][:n_similar] 
+            
 
 
 
