@@ -1,0 +1,9 @@
+README.md
+setup.py
+simplevec/__init__.py
+simplevec/models.py
+simplevec.egg-info/PKG-INFO
+simplevec.egg-info/SOURCES.txt
+simplevec.egg-info/dependency_links.txt
+simplevec.egg-info/requires.txt
+simplevec.egg-info/top_level.txt

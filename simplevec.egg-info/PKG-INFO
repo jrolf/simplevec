@@ -1,0 +1,15 @@
+Metadata-Version: 1.1
+Name: simplevec
+Version: 0.0.2
+Summary: SimpleVec: Elementary Examples of Vector Modeling
+Home-page: https://github.com/jrolf/simplevec
+Author: James A. Rolfsen
+Author-email: james.rolfsen@think.dev
+License: UNKNOWN
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3.7
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Natural Language :: English
+Classifier: Topic :: Software Development :: Libraries :: Python Modules

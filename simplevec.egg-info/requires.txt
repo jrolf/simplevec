@@ -1,0 +1,8 @@
+numpy>=1.1.1
+pandas>1.7.7
+gensim>4.1.1
+scipy
+scikit-learn
+sympy
+statsmodels
+xgboost
